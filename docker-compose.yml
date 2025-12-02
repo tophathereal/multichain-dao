@@ -1,0 +1,39 @@
+version: "3.8"
+
+services:
+  geth:
+    image: ethereum/client-go
+    container_name: geth
+    command:
+      [
+        "--dev",
+        "--dev.period", "10",
+        "--http",
+        "--http.addr", "0.0.0.0",
+        "--http.port", "8545",
+        "--http.api", "eth,net,web3,personal",
+        "--http.corsdomain", "*",
+        "--allow-insecure-unlock"
+      ]
+    ports:
+      - "8545:8545"
+      - "30303:30303"
+    volumes:
+      - ./geth/data:/root/.ethereum
+
+  relayer:
+    image: node:22-alpine
+    container_name: server
+    restart: unless-stopped
+    working_dir: /app
+    dns:
+      - 8.8.8.8
+    volumes:
+      - ./server/:/app
+    env_file:
+      - ./server/.env
+    command: ["node", "index.js"]
+    ports:
+      - "8080:80"
+
+

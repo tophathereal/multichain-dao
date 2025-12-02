@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cross-Chain DAO Governance</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.7.0/dist/ethers.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 { font-size: 2em; margin-bottom: 10px; }
+        .wallet-info {
+            display: flex; justify-content: space-between; align-items: center;
+            flex-wrap: wrap; gap: 10px; margin-top: 20px; padding: 15px;
+            background: rgba(255,255,255,0.1); border-radius: 8px;
+        }
+        .wallet-address { font-family: monospace; font-size: 0.9em; }
+        button {
+            background: white; color: #667eea; border: none;
+            padding: 12px 24px; border-radius: 8px; font-weight: 600;
+            cursor: pointer; transition: all 0.3s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        button:disabled {
+            opacity: 0.5; cursor: not-allowed; transform: none;
+        }
+        .content { padding: 30px; }
+        .tabs {
+            display: flex; gap: 10px; margin-bottom: 30px; border-bottom: 2px solid #eee;
+        }
+        .tab {
+            padding: 12px 24px; background: none; color: #666; border: none;
+            border-bottom: 3px solid transparent; cursor: pointer; transition: all 0.3s;
+        }
+        .tab.active { color: #667eea; border-bottom-color: #667eea; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .card {
+            background: #f8f9fa; border-radius: 12px; padding: 20px; margin-bottom: 20px;
+        }
+        .card h3 {
+            color: #333; margin-bottom: 15px; display: flex; align-items: center; gap: 10px;
+        }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; color: #555; font-weight: 600; margin-bottom: 8px; }
+        input, textarea, select {
+            width: 100%; padding: 12px; border: 2px solid #e0e0e0;
+            border-radius: 8px; font-size: 14px; transition: border-color 0.3s;
+        }
+        input:focus, textarea:focus, select:focus {
+            outline: none; border-color: #667eea;
+        }
+        textarea { resize: vertical; min-height: 100px; }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; width: 100%; padding: 14px; font-size: 16px;
+        }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-warning { background: #ffc107; color: #333; }
+        .proposal-list { display: grid; gap: 20px; }
+        .proposal-card {
+            background: white; border: 2px solid #e0e0e0; border-radius: 12px;
+            padding: 20px; transition: all 0.3s;
+        }
+        .proposal-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.1);
+        }
+        .proposal-header {
+            display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;
+            flex-wrap: wrap; gap: 10px;
+        }
+        .proposal-id {
+            background: #667eea; color: white; padding: 6px 12px;
+            border-radius: 8px; font-size: 0.75em; font-weight: 600;
+            font-family: monospace; word-break: break-all; flex: 1; min-width: 200px;
+        }
+        .proposal-status {
+            padding: 6px 12px; border-radius: 8px; font-size: 0.85em; font-weight: 600;
+        }
+        .status-pending { background: #ffc107; color: #333; }
+        .status-active { background: #28a745; color: white; }
+        .status-succeeded { background: #17a2b8; color: white; }
+        .status-defeated { background: #dc3545; color: white; }
+        .status-executed { background: #6c757d; color: white; }
+        .status-canceled { background: #dc3545; color: white; }
+        .status-queued { background: #17a2b8; color: white; }
+        .status-expired { background: #6c757d; color: white; }
+        
+        .proposal-details {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            font-size: 0.9em;
+        }
+        .detail-row {
+            display: grid;
+            grid-template-columns: 150px 1fr;
+            gap: 10px;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .detail-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .detail-label {
+            font-weight: 600;
+            color: #555;
+        }
+        .detail-value {
+            color: #333;
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 0.95em;
+        }
+        .description-text {
+            font-family: inherit;
+            white-space: pre-wrap;
+            max-height: 100px;
+            overflow-y: auto;
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+        }
+        .description-text.expanded {
+            max-height: none;
+        }
+        .expand-btn {
+            background: #667eea;
+            color: white;
+            padding: 4px 12px;
+            font-size: 0.8em;
+            margin-top: 5px;
+            width: auto;
+            display: inline-block;
+        }
+        .voting-buttons {
+            display: grid; grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px; margin-top: 15px;
+        }
+        .vote-btn {
+            padding: 10px; border-radius: 8px; border: none; cursor: pointer;
+            font-weight: 600; transition: all 0.3s;
+        }
+        .vote-for { background: #28a745; color: white; }
+        .vote-against { background: #dc3545; color: white; }
+        .vote-abstain { background: #6c757d; color: white; }
+        .stats-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px; margin-bottom: 20px;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; padding: 20px; border-radius: 12px; text-align: center;
+        }
+        .stat-value { font-size: 2em; font-weight: bold; margin: 10px 0; }
+        .stat-label { font-size: 0.9em; opacity: 0.9; }
+        .network-badge {
+            display: inline-block; padding: 4px 12px; border-radius: 20px;
+            font-size: 0.85em; font-weight: 600; margin-left: 10px;
+        }
+        .network-governor { background: #28a745; color: white; }
+        .network-source { background: #17a2b8; color: white; }
+        .alert { padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+        .alert-info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .alert-warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .alert-danger { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .two-col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .action-item {
+            background: white;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            font-size: 0.85em;
+        }
+        .action-item strong { color: #667eea; }
+        @media (max-width: 768px) {
+            .two-col-grid { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: 1fr; }
+            .detail-row { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>🗳️ Cross-Chain DAO Governance</h1>
+        <p>Manage proposals across Sepolia (ERC20) and Governor Chain (ERC6909)</p>
+        <div class="wallet-info">
+            <div>
+                <span id="walletAddress" class="wallet-address">Not Connected</span>
+                <span id="currentNetwork" class="network-badge"></span>
+            </div>
+            <button id="connectWallet">Connect MetaMask</button>
+        </div>
+    </div>
+
+    <div class="content">
+        <div class="tabs">
+            <button class="tab active" data-tab="overview">All Proposals</button>
+            <button class="tab" data-tab="propose">Create Proposal</button>
+            <button class="tab" data-tab="vote">Vote</button>
+            <button class="tab" data-tab="delegate">Delegate</button>
+            <button class="tab" data-tab="snapshot">Snapshot Votes</button>
+        </div>
+
+        <!-- Overview Tab -->
+        <div class="tab-content active" id="overview">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Sepolia SGOV Balance</div>
+                    <div class="stat-value" id="sepoliaBalance">-</div>
+                    <small>Source Chain ERC20</small>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Governor ERC6909 Power</div>
+                    <div class="stat-value" id="erc6909Power">-</div>
+                    <small>Local Chain Voting Token</small>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total Proposals</div>
+                    <div class="stat-value" id="totalProposals">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Can Propose</div>
+                    <div class="stat-value" id="canPropose">No</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>📋 All Proposals (Detailed View)</h3>
+                <div id="proposalList" class="proposal-list">
+                    <div class="alert alert-info">Loading proposals...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create Proposal Tab -->
+        <div class="tab-content" id="propose">
+            <div class="card">
+                <h3>📝 Create New Proposal <span class="network-badge network-governor">Governor Chain</span></h3>
+                <div class="alert alert-info">
+                    You need a Proposer Token (ERC6909 ID:1) to create proposals.
+                </div>
+                <form id="proposeForm">
+                    <div class="form-group">
+                        <label>Proposal Title</label>
+                        <input type="text" id="proposalTitle" placeholder="e.g., Update Treasury Parameters" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea id="proposalDescription" placeholder="Detailed description of your proposal..." required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Target Contract Address</label>
+                        <input type="text" id="targetAddress" placeholder="0x..." required>
+                    </div>
+                    <div class="form-group">
+                        <label>ETH Value (in ETH)</label>
+                        <input type="number" id="ethValue" value="0" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>Function Call Data (hex)</label>
+                        <input type="text" id="callData" placeholder="0x or leave empty for ETH transfer" value="0x">
+                    </div>
+                    <button type="submit" class="btn-primary">Create Proposal</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Vote Tab -->
+        <div class="tab-content" id="vote">
+            <div class="card">
+                <h3>🗳️ Cast Your Vote <span class="network-badge network-governor">Governor Chain</span></h3>
+                <div class="form-group">
+                    <label>Proposal ID</label>
+                    <input type="text" id="voteProposalId" placeholder="Enter proposal ID">
+                </div>
+                <div class="voting-buttons">
+                    <button class="vote-btn vote-for" onclick="castVote(1)">✓ For</button>
+                    <button class="vote-btn vote-against" onclick="castVote(0)">✗ Against</button>
+                    <button class="vote-btn vote-abstain" onclick="castVote(2)">○ Abstain</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Delegate Tab -->
+        <div class="tab-content" id="delegate">
+            <div class="two-col-grid">
+                <div class="card">
+                    <h3>🔗 Delegate ERC20 Votes <span class="network-badge network-source">Sepolia</span></h3>
+                    <div class="form-group">
+                        <label>Delegate To (Address)</label>
+                        <input type="text" id="delegateERC20Address" placeholder="0x... or leave empty for self">
+                    </div>
+                    <button class="btn-primary" onclick="delegateERC20()">Delegate ERC20</button>
+                </div>
+
+                <div class="card">
+                    <h3>🔗 Delegate ERC6909 Votes <span class="network-badge network-governor">Governor</span></h3>
+                    <div class="form-group">
+                        <label>Delegate To (Address)</label>
+                        <input type="text" id="delegateERC6909Address" placeholder="0x... or leave empty for self">
+                    </div>
+                    <button class="btn-primary" onclick="delegateERC6909()">Delegate ERC6909</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Snapshot Tab -->
+        <div class="tab-content" id="snapshot">
+            <div class="card">
+                <h3>📸 Snapshot Your Votes <span class="network-badge network-source">Sepolia</span></h3>
+                <div class="alert alert-warning">
+                    Snapshot your Sepolia ERC20 voting power at the proposal's snapshot time and sign it for the relayer.
+                </div>
+                <div class="form-group">
+                    <label>Proposal ID</label>
+                    <input type="text" id="snapshotProposalId" placeholder="Enter proposal ID from governor chain">
+                </div>
+                <div class="form-group">
+                    <label>Proposal Snapshot Timestamp</label>
+                    <div style="display:grid;grid-template-columns:1fr auto;gap:10px;">
+                        <input type="text" id="proposalSnapshotTime" placeholder="Timestamp from governor proposal" readonly>
+                        <button type="button" class="btn-secondary" onclick="fetchProposalSnapshot()" style="width:auto;padding:12px 20px;">
+                            Fetch Snapshot
+                        </button>
+                    </div>
+                    <small style="color:#666;margin-top:5px;display:block;">
+                        Click "Fetch Snapshot" to load the snapshot time from the governor.
+                    </small>
+                </div>
+                <button class="btn-primary" onclick="snapshotAndSign()">Snapshot & Sign</button>
+                <div id="signatureResult" style="margin-top:20px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const CONFIG = {
+        GOVERNOR_CHAIN_ID: '0x539',
+        SOURCE_CHAIN_ID: '0xaa36a7',
+        GOVERNOR_RPC: 'http://192.168.45.151:8545',
+        SOURCE_RPC: 'https://sepolia.infura.io/v3/86a0d6c500904bd3b7b812a46302956d',
+        SOURCE_TOKEN_ADDRESS: '0x86Ce7ca7cF902dCa6015a1912ccbFad7241CFD3C',
+        RELAY_CONTRACT: '0x094cdc56CED3444e73D6fAD1a586f9Ed69321D8a',
+
+        GOVERNOR_ADDRESS: '0x112332a8F483ca8Daa285A7F45873a200e5716bd',
+        ERC20_ADDRESS: '0xc9f00C2201d19492CA74420849Df335f6C70c455',
+        ERC6909_ADDRESS: '0x4309c7A1AD35d49E320c35D2D713716867bE8999'
+    };
+
+    const GOVERNOR_ABI = [
+        "function propose(address[] targets,uint256[] values,bytes[] calldatas,string description) public returns (uint256)",
+        "function castVote(uint256 proposalId,uint8 support) public returns (uint256)",
+        "function state(uint256 proposalId) public view returns (uint8)",
+        "function proposalSnapshot(uint256 proposalId) public view returns (uint256)",
+        "function proposalDeadline(uint256 proposalId) public view returns (uint256)",
+        "function proposalVotes(uint256 proposalId) public view returns (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes)",
+        "event ProposalCreated(uint256 proposalId,address proposer,address[] targets,uint256[] values,string[] signatures,bytes[] calldatas,uint256 voteStart,uint256 voteEnd,string description)"
+    ];
+
+    const ERC20_ABI = [
+        "function delegate(address delegatee) public",
+        "function balanceOf(address account) public view returns (uint256)",
+        "function getVotes(address account) public view returns (uint256)"
+    ];
+
+    const ERC6909_ABI = [
+        "function delegate(address delegatee) public",
+        "function balanceOf(address account,uint256 id) public view returns (uint256)",
+        "function canPropose(address account) public view returns (bool)"
+    ];
+
+    const RELAY_ABI = [
+        "function snapshotVotes(uint256 proposalId,uint256 proposalSnapshot) external returns (uint256)",
+        "function getSnapshot(uint256 proposalId,address voter) external view returns (tuple(address voter,uint256 votes,uint256 snapshotTime,uint256 proposalId,uint256 proposalSnapshot,bool relayed))"
+    ];
+
+    let userAddress;
+    let govProvider, sepProvider;
+    let govRead, erc6909Read, sourceRead, relayRead;
+
+    window.addEventListener('load', () => {
+        setupTabs();
+        setupEventListeners();
+        if (!window.ethereum) alert('MetaMask is required');
+    });
+
+    function setupTabs() {
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab, .tab-content').forEach(el => el.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.tab).classList.add('active');
+            });
+        });
+    }
+
+    function setupEventListeners() {
+        document.getElementById('connectWallet').addEventListener('click', connectWallet);
+        document.getElementById('proposeForm').addEventListener('submit', createProposal);
+
+        if (window.ethereum) {
+            window.ethereum.on('chainChanged', chainId => handleChainChange(chainId));
+            window.ethereum.on('accountsChanged', accounts => {
+                if (!accounts.length) location.reload();
+                else { userAddress = accounts[0]; updateUI(); }
+            });
+        }
+    }
+
+    function handleChainChange(chainId) {
+        const badge = document.getElementById('currentNetwork');
+        if (chainId === CONFIG.GOVERNOR_CHAIN_ID) {
+            badge.textContent = 'Governor Chain';
+            badge.className = 'network-badge network-governor';
+        } else if (chainId === CONFIG.SOURCE_CHAIN_ID) {
+            badge.textContent = 'Sepolia';
+            badge.className = 'network-badge network-source';
+        } else {
+            badge.textContent = 'Unknown Network';
+            badge.className = 'network-badge';
+        }
+    }
+
+    async function connectWallet() {
+        try {
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            userAddress = accounts[0];
+
+            document.getElementById('walletAddress').textContent =
+                `${userAddress.substring(0, 6)}...${userAddress.substring(38)}`;
+            const btn = document.getElementById('connectWallet');
+            btn.textContent = 'Connected';
+            btn.disabled = true;
+
+            govProvider = new ethers.JsonRpcProvider(CONFIG.GOVERNOR_RPC);
+            sepProvider = new ethers.JsonRpcProvider(CONFIG.SOURCE_RPC);
+
+            govRead = new ethers.Contract(CONFIG.GOVERNOR_ADDRESS, GOVERNOR_ABI, govProvider);
+            erc6909Read = new ethers.Contract(CONFIG.ERC6909_ADDRESS, ERC6909_ABI, govProvider);
+            sourceRead = new ethers.Contract(CONFIG.SOURCE_TOKEN_ADDRESS, ERC20_ABI, sepProvider);
+            relayRead = new ethers.Contract(CONFIG.RELAY_CONTRACT, RELAY_ABI, sepProvider);
+
+            const browserProvider = new ethers.BrowserProvider(window.ethereum);
+            const network = await browserProvider.getNetwork();
+            handleChainChange('0x' + network.chainId.toString(16));
+
+            await updateUI();
+        } catch (e) {
+            console.error(e);
+            alert(e.message);
+        }
+    }
+
+    async function updateUI() {
+        await Promise.all([loadOverview(), loadProposals()]);
+    }
+
+    async function loadOverview() {
+        if (!userAddress || !erc6909Read || !sourceRead) return;
+        try {
+            const [power, canProp, sgov] = await Promise.all([
+                erc6909Read.balanceOf(userAddress, 0),
+                erc6909Read.canPropose(userAddress),
+                sourceRead.balanceOf(userAddress)
+            ]);
+            document.getElementById('erc6909Power').textContent = ethers.formatEther(power);
+            document.getElementById('canPropose').textContent = canProp ? 'Yes ✓' : 'No ✗';
+            document.getElementById('sepoliaBalance').textContent = ethers.formatEther(sgov);
+        } catch (e) { console.error('loadOverview', e); }
+    }
+
+    async function loadProposals() {
+        if (!govRead || !govProvider) return;
+        try {
+            const list = document.getElementById('proposalList');
+            list.innerHTML = '<div class="alert alert-info">Loading all proposals...</div>';
+            const filter = govRead.filters.ProposalCreated();
+            const currentBlock = await govProvider.getBlockNumber();
+            const events = await govRead.queryFilter(filter, Math.max(0, currentBlock - 10000), currentBlock);
+
+            if (!events.length) {
+                list.innerHTML = '<div class="alert alert-info">No proposals found</div>';
+                document.getElementById('totalProposals').textContent = '0';
+                return;
+            }
+
+            list.innerHTML = '';
+            document.getElementById('totalProposals').textContent = events.length;
+
+            for (const ev of events.reverse()) {
+                const id = ev.args.proposalId.toString();
+                const proposer = ev.args.proposer;
+                const targets = ev.args.targets || [];
+                const values = ev.args.values || [];
+                const calldatas = ev.args.calldatas || [];
+                const voteStart = ev.args.voteStart || 0n;
+                const voteEnd = ev.args.voteEnd || 0n;
+                const desc = ev.args.description || '';
+                
+                const state = Number(await govRead.state(id));
+                const snapshot = await govRead.proposalSnapshot(id);
+                const deadline = await govRead.proposalDeadline(id);
+                
+                let votes = { againstVotes: 0n, forVotes: 0n, abstainVotes: 0n };
+                try {
+                    const result = await govRead.proposalVotes(id);
+                    votes = {
+                        againstVotes: result.againstVotes || result[0] || 0n,
+                        forVotes: result.forVotes || result[1] || 0n,
+                        abstainVotes: result.abstainVotes || result[2] || 0n
+                    };
+                } catch (e) {
+                    console.warn('Could not fetch votes for proposal', id, e.message);
+                }
+
+                list.appendChild(createDetailedProposalCard({
+                    id, proposer, targets, values, calldatas, voteStart, voteEnd, desc, state, snapshot, deadline, votes
+                }));
+            }
+        } catch (e) {
+            console.error('loadProposals', e);
+            document.getElementById('proposalList').innerHTML =
+                `<div class="alert alert-danger">Error: ${e.message}</div>`;
+        }
+    }
+
+    function createDetailedProposalCard(data) {
+        const states = ['Pending', 'Active', 'Canceled', 'Defeated', 'Succeeded', 'Queued', 'Expired', 'Executed'];
+        const classes = ['pending', 'active', 'canceled', 'defeated', 'succeeded', 'queued', 'expired', 'executed'];
+        
+        const div = document.createElement('div');
+        div.className = 'proposal-card';
+        
+        const descLines = (data.desc || '').split('\n');
+        const title = descLines[0] || 'Untitled Proposal';
+        const fullDesc = data.desc || '';
+        
+        // Safe formatting function
+        const formatEther = (val) => {
+            try {
+                if (val === null || val === undefined) return '0';
+                return ethers.formatEther(val);
+            } catch (e) {
+                return '0';
+            }
+        };
+        
+        div.innerHTML = `
+            <div class="proposal-header">
+                <div class="proposal-id">ID: ${data.id}</div>
+                <span class="proposal-status status-${classes[data.state]}">${states[data.state]}</span>
+            </div>
+            <h4 style="margin-bottom: 15px; color: #333;">${title}</h4>
+            
+            <div class="proposal-details">
+                <div class="detail-row">
+                    <div class="detail-label">Proposer:</div>
+                    <div class="detail-value">${data.proposer || 'N/A'}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Vote Start:</div>
+                    <div class="detail-value">${data.voteStart ? new Date(Number(data.voteStart) * 1000).toLocaleString() : 'N/A'}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Vote End:</div>
+                    <div class="detail-value">${data.voteEnd ? new Date(Number(data.voteEnd) * 1000).toLocaleString() : 'N/A'}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Snapshot:</div>
+                    <div class="detail-value">${data.snapshot ? data.snapshot.toString() : 'N/A'}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Deadline:</div>
+                    <div class="detail-value">${data.deadline ? data.deadline.toString() : 'N/A'}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Votes For:</div>
+                    <div class="detail-value" style="color: #28a745;">${formatEther(data.votes.forVotes)}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Votes Against:</div>
+                    <div class="detail-value" style="color: #dc3545;">${formatEther(data.votes.againstVotes)}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Votes Abstain:</div>
+                    <div class="detail-value" style="color: #6c757d;">${formatEther(data.votes.abstainVotes)}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Actions:</div>
+                    <div>
+                        ${data.targets.map((target, i) => `
+                            <div class="action-item">
+                                <strong>Target ${i + 1}:</strong> ${target || 'N/A'}<br>
+                                <strong>Value:</strong> ${formatEther(data.values[i])} ETH<br>
+                                <strong>Calldata:</strong> ${data.calldatas[i] || '0x'}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">Description:</div>
+                    <div>
+                        <div class="description-text" id="desc-${data.id}">${fullDesc}</div>
+                        ${fullDesc.length > 200 ? `<button class="expand-btn" onclick="toggleDescription('${data.id}')">Expand Full</button>` : ''}
+                    </div>
+                </div>
+            </div>
+            
+            ${data.state === 1 ? `
+                <div class="voting-buttons">
+                    <button class="vote-btn vote-for" onclick="quickVote('${data.id}',1)">✓ For</button>
+                    <button class="vote-btn vote-against" onclick="quickVote('${data.id}',0)">✗ Against</button>
+                    <button class="vote-btn vote-abstain" onclick="quickVote('${data.id}',2)">○ Abstain</button>
+                </div>` : ''}
+        `;
+        return div;
+    }
+
+    function toggleDescription(id) {
+        const el = document.getElementById('desc-' + id);
+        el.classList.toggle('expanded');
+    }
+
+    async function getSignerFor(chainId, rpcUrl, name) {
+        if (!userAddress) throw new Error('Connect wallet first');
+        try {
+            await window.ethereum.request({
+                method: 'wallet_switchEthereumChain',
+                params: [{ chainId }]
+            });
+        } catch (error) {
+            if (error.code === 4902) {
+                await window.ethereum.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [{ chainId, chainName: name, rpcUrls: [rpcUrl] }]
+                });
+            } else {
+                throw error;
+            }
+        }
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        return await provider.getSigner();
+    }
+
+    async function createProposal(e) {
+        e.preventDefault();
+        try {
+            const signer = await getSignerFor(CONFIG.GOVERNOR_CHAIN_ID, CONFIG.GOVERNOR_RPC, 'Governor Chain');
+            const gov = new ethers.Contract(CONFIG.GOVERNOR_ADDRESS, GOVERNOR_ABI, signer);
+
+            const title = document.getElementById('proposalTitle').value;
+            const desc = document.getElementById('proposalDescription').value;
+            const target = document.getElementById('targetAddress').value;
+            const val = ethers.parseEther(document.getElementById('ethValue').value || '0');
+            const data = document.getElementById('callData').value || '0x';
+
+            const tx = await gov.propose([target], [val], [data], `${title}\n\n${desc}`);
+            alert('Proposal transaction sent');
+            await tx.wait();
+            alert('Proposal created');
+            e.target.reset();
+            await updateUI();
+        } catch (e) {
+            console.error('createProposal', e);
+            alert(e.message);
+        }
+    }
+
+    async function castVote(support) {
+        const id = document.getElementById('voteProposalId').value.trim();
+        if (!id) return alert('Enter proposal ID');
+        try {
+            const signer = await getSignerFor(CONFIG.GOVERNOR_CHAIN_ID, CONFIG.GOVERNOR_RPC, 'Governor Chain');
+            const gov = new ethers.Contract(CONFIG.GOVERNOR_ADDRESS, GOVERNOR_ABI, signer);
+            const tx = await gov.castVote(id, support);
+            alert('Vote tx sent');
+            await tx.wait();
+            alert('Vote cast');
+            await updateUI();
+        } catch (e) {
+            console.error('castVote', e);
+            alert(e.message);
+        }
+    }
+
+    async function quickVote(id, support) {
+        document.getElementById('voteProposalId').value = id;
+        document.querySelector('[data-tab="vote"]').click();
+        await castVote(support);
+    }
+
+    async function delegateERC20() {
+        try {
+            const signer = await getSignerFor(CONFIG.SOURCE_CHAIN_ID, CONFIG.SOURCE_RPC, 'Sepolia');
+            const token = new ethers.Contract(CONFIG.SOURCE_TOKEN_ADDRESS, ERC20_ABI, signer);
+            const to = (document.getElementById('delegateERC20Address').value || userAddress).trim();
+            const tx = await token.delegate(to);
+            alert('Delegation tx sent');
+            await tx.wait();
+            alert('ERC20 delegated');
+            await updateUI();
+        } catch (e) {
+            console.error('delegateERC20', e);
+            alert(e.message);
+        }
+    }
+
+    async function delegateERC6909() {
+        try {
+            const signer = await getSignerFor(CONFIG.GOVERNOR_CHAIN_ID, CONFIG.GOVERNOR_RPC, 'Governor Chain');
+            const token = new ethers.Contract(CONFIG.ERC6909_ADDRESS, ERC6909_ABI, signer);
+            const to = (document.getElementById('delegateERC6909Address').value || userAddress).trim();
+            const tx = await token.delegate(to);
+            alert('Delegation tx sent');
+            await tx.wait();
+            alert('ERC6909 delegated');
+            await updateUI();
+        } catch (e) {
+            console.error('delegateERC6909', e);
+            alert(e.message);
+        }
+    }
+
+    async function fetchProposalSnapshot() {
+        const id = document.getElementById('snapshotProposalId').value.trim();
+        if (!id) return alert('Enter Proposal ID');
+        if (!govRead) return alert('Connect wallet first');
+        try {
+            const time = await govRead.proposalSnapshot(id);
+            if (time === 0n) {
+                alert('Proposal not found or not yet snapshotted');
+                return;
+            }
+            document.getElementById('proposalSnapshotTime').value = time.toString();
+        } catch (e) {
+            console.error('fetchProposalSnapshot', e);
+            alert('Error fetching snapshot: ' + e.message);
+        }
+    }
+
+    async function snapshotAndSign() {
+        const idStr = document.getElementById('snapshotProposalId').value.trim();
+        const snapStr = document.getElementById('proposalSnapshotTime').value.trim();
+        if (!idStr || !snapStr) return alert('Fill proposal ID and fetch snapshot timestamp first');
+        try {
+            const id = BigInt(idStr);
+            const snap = BigInt(snapStr);
+
+            const signer = await getSignerFor(CONFIG.SOURCE_CHAIN_ID, CONFIG.SOURCE_RPC, 'Sepolia');
+            const relay = new ethers.Contract(CONFIG.RELAY_CONTRACT, RELAY_ABI, signer);
+
+            alert('Submitting snapshot transaction...');
+            const tx = await relay.snapshotVotes(id, snap);
+            await tx.wait();
+            alert('Snapshot recorded');
+
+            const snapshot = await relay.getSnapshot(id, userAddress);
+            const messageHash = ethers.solidityPackedKeccak256(
+                ['uint64', 'address', 'address', 'uint256', 'address', 'uint256', 'uint256'],
+                [11155111n, CONFIG.RELAY_CONTRACT, CONFIG.GOVERNOR_ADDRESS, id, userAddress, snapshot.votes, snapshot.snapshotTime]
+            );
+
+            const signature = await signer.signMessage(ethers.getBytes(messageHash));
+
+            document.getElementById('signatureResult').innerHTML = `
+                <div class="alert alert-success">
+                    <h4>✓ Snapshot Created & Signed!</h4>
+                    <p><strong>Voter:</strong> ${userAddress}</p>
+                    <p><strong>Votes:</strong> ${ethers.formatEther(snapshot.votes)}</p>
+                    <p><strong>Snapshot Time:</strong> ${snapshot.snapshotTime.toString()}</p>
+                    <p><strong>Signature:</strong></p>
+                    <textarea readonly style="width:100%;height:60px;font-family:monospace;font-size:0.85em;">${signature}</textarea>
+                    <p style="margin-top:10px;"><small>The off-chain relayer can now use this signature with relayVotes().</small></p>
+                </div>
+            `;
+        } catch (e) {
+            console.error('snapshotAndSign', e);
+            alert(e.message);
+        }
+    }
+</script>
+</body>
+</html>

@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cross-Chain Governance</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
+        h1, h2, h3 { margin-top: 20px; }
+        button { padding: 8px 16px; margin: 5px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
+        button:hover { background: #0056b3; }
+        button.secondary { background: #28a745; }
+        button.secondary:hover { background: #1f7a34; }
+        button.danger { background: #dc3545; }
+        button.danger:hover { background: #c82333; }
+        input, select { padding: 8px; margin: 5px 0; width: 100%; box-sizing: border-box; }
+        textarea { padding: 8px; margin: 5px 0; width: 100%; box-sizing: border-box; min-height: 60px; }
+        .section { border: 1px solid #ccc; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .status { padding: 10px; margin: 10px 0; border: 1px solid #ccc; }
+        .success { background: #d4edda; }
+        .error { background: #f8d7da; }
+        .info { background: #d1ecf1; }
+        .warning { background: #fff3cd; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; font-size: 11px; }
+        #loading-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.95); padding: 40px; text-align: center; z-index: 1000; overflow-y: auto; }
+        .proposal { border-left: 4px solid #007bff; padding: 12px; margin: 12px 0; background: #f9f9f9; }
+        .proposal.Active { border-left-color: #28a745; background: #e8f5e9; }
+        .proposal.Succeeded { border-left-color: #17a2b8; background: #e1f5fe; }
+        .votes { font-size: 0.9em; color: #666; margin: 8px 0; }
+    </style>
+</head>
+<body>
+
+<div id="loading-overlay">
+    <h2>⏳ Loading ABIs...</h2>
+    <p id="loading-status">Checking for JSON files...</p>
+    <pre id="loading-debug" style="display:none; text-align: left; max-height: 400px; overflow-y: auto;"></pre>
+</div>
+
+<h1>🗳️ Cross-Chain Governance Dashboard</h1>
+
+<div class="section">
+    <h2>1. Connect Wallet</h2>
+    <button onclick="connectWallet()">🔗 Connect MetaMask</button>
+    <button onclick="checkConnection()">Check Connection</button>
+    <button onclick="logout()" class="danger">🔌 Disconnect Wallet</button>
+
+    <div id="connection-status"></div>
+    <pre id="connection-info"></pre>
+</div>
+
+<div class="section">
+    <h2>2. Switch Network</h2>
+    <button onclick="switchToSepolia()">Switch to Sepolia (11155111)</button>
+    <button onclick="switchToAmoy()">Switch to Amoy (80002)</button>
+    <button onclick="getCurrentNetwork()">Check Current Network</button>
+    <div id="network-status"></div>
+</div>
+
+<div class="section">
+    <h2>3. Contract Addresses</h2>
+    <label>Sepolia VotesOFT:</label>
+    <input type="text" id="config-sepolia-voft" value="0x6Eca90d3e7452a777427DA16a62c2c7f0ff7FaA1" readonly>
+    
+    <label>Sepolia NSToken:</label>
+    <input type="text" id="config-sepolia-ns" value="0xfaaa7C76620a9C57dB5c089cFa957e00b678CE9D" readonly>
+    
+    <label>Sepolia Governor:</label>
+    <input type="text" id="config-sepolia-gov" value="0xaBb8388a0Ef1779c396e586d23E12c4B6Cf84678" readonly>
+    
+    <label>Amoy VotesOFT:</label>
+    <input type="text" id="config-amoy-voft" value="0xCBb1f643565c1d7ea076Ee0937Cf2E999Ffc6b9D" readonly>
+    
+    <button onclick="saveConfig()">Save Configuration</button>
+    <div id="config-status"></div>
+</div>
+
+<div class="section">
+    <h2>4. Check Balances & Voting Power</h2>
+    <h3>Sepolia</h3>
+    <button onclick="getVotesOFTBalance()">VotesOFT Balance</button>
+    <button onclick="getNSTokenBalance()">NSToken Balance</button>
+    <button onclick="getVotesOFTVotingPower()">VotesOFT Voting Power</button>
+    <button onclick="getNSTokenVotingPower()">NSToken Voting Power</button>
+    
+    <h3>Amoy</h3>
+    <button onclick="getAmoyVotesOFTBalance()">Amoy VotesOFT Balance</button>
+    <button onclick="getAmoyVotesOFTVotingPower()">Amoy VotesOFT Voting Power</button>
+    
+    <div id="balance-status"></div>
+    <pre id="balance-info"></pre>
+</div>
+
+<div class="section">
+    <h2>5. Delegate Tokens (Sepolia)</h2>
+    <p style="color: #666; font-size: 0.9em;">⚠️ Must delegate to yourself to activate voting power</p>
+    <button onclick="selfDelegate()" class="secondary">⚡ Self-Delegate Both Tokens</button>
+    <button onclick="delegateVotesOFT()" class="secondary">Delegate VotesOFT Only</button>
+    <button onclick="delegateNSToken()" class="secondary">Delegate NSToken Only</button>
+    <div id="delegate-status"></div>
+</div>
+
+<div class="section">
+    <h2>6. Governor Info</h2>
+    <div>Current Block: <span id="current-block">-</span></div>
+    <div>Quorum Required: <span id="quorum">-</span></div>
+    <div>Proposal Threshold: <span id="proposal-threshold">-</span></div>
+    <button onclick="refreshGovernorInfo()">🔄 Refresh Info</button>
+    <button onclick="refreshProposals()">📋 Refresh Proposals</button>
+</div>
+
+<div class="section">
+    <h2>7. Active Proposals</h2>
+    <ul id="proposal-list"><li>Loading...</li></ul>
+</div>
+
+<div class="section">
+    <h2>8. Create Proposal (Sepolia)</h2>
+    <label>Target Address:</label>
+    <input type="text" id="propose-target" value="0x0000000000000000000000000000000000000000" placeholder="0x...">
+    <label>Value (wei):</label>
+    <input type="text" id="propose-value" value="0">
+    <label>Calldata (hex):</label>
+    <textarea id="propose-calldata" placeholder="0x (leave empty for no call)"></textarea>
+    <label>Description:</label>
+    <textarea id="propose-desc" placeholder="My proposal description...">Test Proposal</textarea>
+    <button onclick="submitProposal()">🚀 Submit Proposal</button>
+    <div id="propose-status"></div>
+    <pre id="propose-result"></pre>
+</div>
+
+<div class="section">
+    <h2>9. Bridge Tokens (Sepolia to Amoy)</h2>
+    <label>Amount (tokens):</label>
+    <input type="number" id="bridge-amount" placeholder="10" step="0.01">
+    <button onclick="estimateBridgeFee()">Estimate Fee</button>
+    <button onclick="executeBridge()">Execute Bridge</button>
+    <div id="bridge-status"></div>
+    <pre id="bridge-result"></pre>
+</div>
+
+<div class="section">
+    <h2>10. Transaction Log</h2>
+    <button onclick="clearLog()">Clear Log</button>
+    <div id="log" style="max-height: 300px; overflow-y: auto; background: #f9f9f9; padding: 10px;"></div>
+</div>
+
+<script>
+let provider, signer, userAddress, currentChainId;
+let config = {
+    sepolia: { 
+        chainId: 11155111, 
+        voft: "0x6Eca90d3e7452a777427DA16a62c2c7f0ff7FaA1", 
+        ns: "0xfaaa7C76620a9C57dB5c089cFa957e00b678CE9D", 
+        gov: "0xaBb8388a0Ef1779c396e586d23E12c4B6Cf84678" 
+    },
+    amoy: { 
+        chainId: 80002, 
+        voft: "0xCBb1f643565c1d7ea076Ee0937Cf2E999Ffc6b9D" 
+    },
+    eids: { sepolia: 40161, amoy: 40267 }
+};
+
+let ABIS = { erc20: null, governor: null, oft: null };
+let abisLoaded = false;
+let gov, voft, nstk;
+
+const PROPOSAL_STATE = ["Pending", "Active", "Canceled", "Defeated", "Succeeded", "Queued", "Expired", "Executed"];
+
+async function loadABIs() {
+    const loadingOverlay = document.getElementById("loading-overlay");
+    const statusEl = document.getElementById("loading-status");
+    
+    try {
+        statusEl.textContent = "Fetching VotesOFT.json...";
+        const voftResponse = await fetch('VotesOFT.json');
+        if (!voftResponse.ok) throw new Error(`VotesOFT.json returned ${voftResponse.status}`);
+        const voftText = await voftResponse.text();
+        const voftABI = JSON.parse(voftText);
+        
+        statusEl.textContent = "Fetching NSToken.json...";
+        const nsResponse = await fetch('NSToken.json');
+        if (!nsResponse.ok) throw new Error(`NSToken.json returned ${nsResponse.status}`);
+        const nsText = await nsResponse.text();
+        const nsABI = JSON.parse(nsText);
+        
+        statusEl.textContent = "Fetching MultiTokenGovernor.json...";
+        const govResponse = await fetch('MultiTokenGovernor.json');
+        if (!govResponse.ok) throw new Error(`MultiTokenGovernor.json returned ${govResponse.status}`);
+        const govText = await govResponse.text();
+        const govABI = JSON.parse(govText);
+        
+        if (!Array.isArray(voftABI)) throw new Error('VotesOFT.json is not an array');
+        if (!Array.isArray(nsABI)) throw new Error('NSToken.json is not an array');
+        if (!Array.isArray(govABI)) throw new Error('MultiTokenGovernor.json is not an array');
+        
+        ABIS.erc20 = nsABI;
+        ABIS.governor = govABI;
+        ABIS.oft = voftABI;
+        
+        abisLoaded = true;
+        log(`✅ ABIs loaded: VotesOFT(${voftABI.length}), NSToken(${nsABI.length}), Governor(${govABI.length})`);
+        loadingOverlay.style.display = 'none';
+        
+    } catch (e) {
+        console.error("ABI loading error:", e);
+        log("❌ Failed to load ABIs: " + e.message);
+        loadingOverlay.innerHTML = `
+            <h2>❌ Failed to Load ABIs</h2>
+            <p style="color: red;">${e.message}</p>
+            <button onclick="location.reload()">Retry</button>
+            <button onclick="useEmbeddedABIs()">Use Minimal ABIs</button>
+        `;
+    }
+}
+
+function useEmbeddedABIs() {
+    ABIS.erc20 = [
+        "function balanceOf(address) view returns (uint256)",
+        "function delegate(address)",
+        "function getVotes(address) view returns (uint256)"
+    ];
+    
+    ABIS.governor = [
+        "function propose(address[], uint256[], bytes[], string) returns (uint256)",
+        "function castVote(uint256, uint8) returns (uint256)",
+        "function state(uint256) view returns (uint8)",
+        "function proposalVotes(uint256) view returns (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes)",
+        "function quorum(uint256) view returns (uint256)",
+        "function proposalThreshold() view returns (uint256)",
+        "event ProposalCreated(uint256 proposalId, address proposer, address[] targets, uint256[] values, string[] signatures, bytes[] calldatas, uint256 voteStart, uint256 voteEnd, string description)"
+    ];
+    
+    ABIS.oft = [
+        "function balanceOf(address) view returns (uint256)",
+        "function delegate(address)",
+        "function getVotes(address) view returns (uint256)",
+        "function quoteSend(tuple(uint32,bytes32,uint256,uint256,bytes,bytes,bytes), bool) view returns (tuple(uint256,uint256))",
+        "function send(tuple(uint32,bytes32,uint256,uint256,bytes,bytes,bytes), tuple(uint256,uint256), address) payable"
+    ];
+    
+    abisLoaded = true;
+    document.getElementById("loading-overlay").style.display = 'none';
+    log("⚠️ Using minimal embedded ABIs");
+}
+
+function checkABIsLoaded() {
+    if (!abisLoaded) throw new Error("ABIs not loaded");
+}
+
+function log(msg) {
+    const logDiv = document.getElementById("log");
+    const time = new Date().toLocaleTimeString();
+    logDiv.innerHTML = `[${time}] ${msg}<br>` + logDiv.innerHTML;
+    console.log(msg);
+}
+
+function clearLog() {
+    document.getElementById("log").innerHTML = "";
+}
+
+async function connectWallet() {
+    try {
+        checkABIsLoaded();
+        if (!window.ethereum) throw new Error("MetaMask not found");
+        
+        await window.ethereum.request({ method: 'eth_requestAccounts' });
+        provider = new ethers.providers.Web3Provider(window.ethereum, "any");
+        signer = provider.getSigner();
+        userAddress = await signer.getAddress();
+        
+        const network = await provider.getNetwork();
+        currentChainId = network.chainId;
+        
+        gov = new ethers.Contract(config.sepolia.gov, ABIS.governor, signer);
+        voft = new ethers.Contract(config.sepolia.voft, ABIS.oft, signer);
+        nstk = new ethers.Contract(config.sepolia.ns, ABIS.erc20, signer);
+        
+        document.getElementById("connection-status").innerHTML = `<div class="success">✅ Connected</div>`;
+        document.getElementById("connection-info").textContent = `Address: ${userAddress}\nChain ID: ${currentChainId}`;
+        log(`Connected: ${userAddress}`);
+        
+        await Promise.all([
+            refreshBalances(),
+            refreshGovernorInfo(),
+            refreshProposals()
+        ]);
+        
+        window.ethereum.on('accountsChanged', () => location.reload());
+        window.ethereum.on('chainChanged', () => location.reload());
+        
+    } catch (e) {
+        document.getElementById("connection-status").innerHTML = `<div class="error">❌ ${e.message}</div>`;
+        log(`Error: ${e.message}`);
+    }
+}
+
+async function checkConnection() {
+    if (!signer) {
+        document.getElementById("connection-status").innerHTML = `<div class="error">Not connected</div>`;
+        return;
+    }
+    try {
+        const addr = await signer.getAddress();
+        const balance = await provider.getBalance(addr);
+        document.getElementById("connection-info").textContent = 
+            `Address: ${addr}\nChain ID: ${currentChainId}\nBalance: ${ethers.utils.formatEther(balance)}`;
+        log("Connection verified");
+    } catch (e) {
+        document.getElementById("connection-status").innerHTML = `<div class="error">❌ ${e.message}</div>`;
+    }
+}
+
+async function switchToSepolia() {
+    try {
+        await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0xaa36a7' }] });
+        log("Switched to Sepolia");
+        setTimeout(() => location.reload(), 1000);
+    } catch (e) {
+        alert(`Switch error: ${e.message}`);
+    }
+}
+
+async function switchToAmoy() {
+    try {
+        await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x13882' }] });
+        log("Switched to Amoy");
+        setTimeout(() => location.reload(), 1000);
+    } catch (e) {
+        if (e.code === 4902) {
+            await window.ethereum.request({
+                method: 'wallet_addEthereumChain',
+                params: [{
+                    chainId: '0x13882',
+                    chainName: 'Polygon Amoy',
+                    nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 },
+                    rpcUrls: ['https://rpc-amoy.polygon.technology'],
+                    blockExplorerUrls: ['https://amoy.polygonscan.com']
+                }]
+            });
+        } else {
+            alert(`Switch error: ${e.message}`);
+        }
+    }
+}
+
+async function getCurrentNetwork() {
+    try {
+        const chainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
+        currentChainId = parseInt(chainIdHex, 16);
+        const names = { 11155111: "Sepolia", 80002: "Amoy" };
+        document.getElementById("network-status").innerHTML = 
+            `<div class="info">Current: ${names[currentChainId] || "Unknown"} (${currentChainId})</div>`;
+        log(`Current network: ${currentChainId}`);
+    } catch (e) {
+        alert(`Network check error: ${e.message}`);
+    }
+}
+
+function saveConfig() {
+    document.getElementById("config-status").innerHTML = `<div class="info">✅ Addresses are hard-coded</div>`;
+    log("Config is pre-configured");
+}
+
+async function refreshBalances() {
+    if (!userAddress || !voft || !nstk) return;
+    try {
+        const [voftBal, nstBal, voftVotes, nstVotes] = await Promise.all([
+            voft.balanceOf(userAddress),
+            nstk.balanceOf(userAddress),
+            voft.getVotes(userAddress),
+            nstk.getVotes(userAddress)
+        ]);
+        
+        log(`Balances: VotesOFT=${ethers.utils.formatEther(voftBal)}, NSToken=${ethers.utils.formatEther(nstBal)}`);
+        log(`Voting Power: VotesOFT=${ethers.utils.formatEther(voftVotes)}, NSToken=${ethers.utils.formatEther(nstVotes)}`);
+    } catch (e) {
+        console.error("Balance error:", e);
+    }
+}
+
+async function getVotesOFTBalance() {
+    try {
+        checkABIsLoaded();
+        const contract = new ethers.Contract(config.sepolia.voft, ABIS.oft, provider);
+        const balance = await contract.balanceOf(userAddress);
+        document.getElementById("balance-info").textContent = `VotesOFT: ${ethers.utils.formatEther(balance)}`;
+        log(`VotesOFT balance: ${ethers.utils.formatEther(balance)}`);
+    } catch (e) {
+        document.getElementById("balance-status").innerHTML = `<div class="error">❌ ${e.message}</div>`;
+    }
+}
+
+async function getNSTokenBalance() {
+    try {
+        checkABIsLoaded();
+        const contract = new ethers.Contract(config.sepolia.ns, ABIS.erc20, provider);
+        const balance = await contract.balanceOf(userAddress);
+        document.getElementById("balance-info").textContent = `NSToken: ${ethers.utils.formatEther(balance)}`;
+        log(`NSToken balance: ${ethers.utils.formatEther(balance)}`);
+    } catch (e) {
+        document.getElementById("balance-status").innerHTML = `<div class="error">❌ ${e.message}</div>`;
+    }
+}
+
+async function getVotesOFTVotingPower() {
+    try {
+        checkABIsLoaded();
+        const contract = new ethers.Contract(config.sepolia.voft, ABIS.oft, provider);
+        const votes = await contract.getVotes(userAddress);
+        document.getElementById("balance-info").textContent = `VotesOFT Votes: ${ethers.utils.formatEther(votes)}`;
+        log(`VotesOFT voting power: ${ethers.utils.formatEther(votes)}`);
+    } catch (e) {
+        document.getElementById("balance-status").innerHTML = `<div class="error">❌ ${e.message}</div>`;
+    }
+}
+
+async function getNSTokenVotingPower() {
+    try {
+        checkABIsLoaded();
+        const contract = new ethers.Contract(config.sepolia.ns, ABIS.erc20, provider);
+        const votes = await contract.getVotes(userAddress);
+        document.getElementById("balance-info").textContent = `NSToken Votes: ${ethers.utils.formatEther(votes)}`;
+        log(`NSToken voting power: ${ethers.utils.formatEther(votes)}`);
+    } catch (e) {
+        document.getElementById("balance-status").innerHTML = `<div class="error">❌ ${e.message}</div>`;
+    }
+}
+
+async function getAmoyVotesOFTBalance() {
+    try {
+        checkABIsLoaded();
+        const amoyProvider = new ethers.providers.JsonRpcProvider('https://rpc-amoy.polygon.technology');
+        const contract = new ethers.Contract(config.amoy.voft, ABIS.oft, amoyProvider);
+        const balance = await contract.balanceOf(userAddress);
+        document.getElementById("balance-info").textContent = `Amoy VotesOFT: ${ethers.utils.formatEther(balance)}`;
+        log(`Amoy balance: ${ethers.utils.formatEther(balance)}`);
+    } catch (e) {
+        document.getElementById("balance-status").innerHTML = `<div class="error">❌ ${e.message}</div>`;
+    }
+}
+
+async function getAmoyVotesOFTVotingPower() {
+    try {
+        checkABIsLoaded();
+        const amoyProvider = new ethers.providers.JsonRpcProvider('https://rpc-amoy.polygon.technology');
+        const contract = new ethers.Contract(config.amoy.voft, ABIS.oft, amoyProvider);
+        const votes = await contract.getVotes(userAddress);
+        document.getElementById("balance-info").textContent = `Amoy Votes: ${ethers.utils.formatEther(votes)}`;
+        log(`Amoy voting power: ${ethers.utils.formatEther(votes)}`);
+    } catch (e) {
+        document.getElementById("balance-status").innerHTML = `<div class="error">❌ ${e.message}</div>`;
+    }
+}
+
+async function refreshGovernorInfo() {
+    if (!gov || !provider) return;
+    try {
+        const block = await provider.getBlockNumber();
+        const pastBlock = Math.max(0, block - 1);
+        
+        const [quorum, proposalThreshold] = await Promise.all([
+            gov.quorum(pastBlock),
+            gov.proposalThreshold()
+        ]);
+        
+        document.getElementById('current-block').innerText = block;
+        document.getElementById('quorum').innerText = `${ethers.utils.formatEther(quorum)} votes`;
+        document.getElementById('proposal-threshold').innerText = `${ethers.utils.formatEther(proposalThreshold)} votes`;
+        
+        log(`Block ${block}, Quorum: ${ethers.utils.formatEther(quorum)}`);
+    } catch (e) {
+        console.error("Governor info error:", e);
+    }
+}
+
+async function refreshProposals() {
+    if (!gov || !provider) return;
+    try {
+        document.getElementById('proposal-list').innerHTML = '<li>⏳ Loading proposals...</li>';
+        
+        const filter = gov.filters.ProposalCreated();
+        const logs = await gov.queryFilter(filter, 0, "latest");
+        
+        if (!logs.length) {
+            document.getElementById('proposal-list').innerHTML = '<li>📭 No proposals yet</li>';
+            return;
+        }
+        
+        let html = '';
+        for (const log of logs) {
+            const id = log.args.proposalId.toString();
+            const [stateNum, votes] = await Promise.all([
+                gov.state(id),
+                gov.proposalVotes(id)
+            ]);
+            
+            const stateLabel = PROPOSAL_STATE[stateNum] || `Unknown(${stateNum})`;
+            const stateClass = stateNum === 1 ? 'Active' : stateNum === 4 ? 'Succeeded' : '';
+            
+            const forVotes = ethers.utils.formatEther(votes.forVotes);
+            const againstVotes = ethers.utils.formatEther(votes.againstVotes);
+            const abstainVotes = ethers.utils.formatEther(votes.abstainVotes);
+            
+            html += `
+                <li class="proposal ${stateClass}">
+                    <strong>ID #${id}: ${stateLabel}</strong><br>
+                    <small class="votes">
+                        For: ${forVotes} | Against: ${againstVotes} | Abstain: ${abstainVotes}
+                    </small><br>
+                    <button onclick="voteProposal('${id}', 1)">✅ For</button>
+                    <button onclick="voteProposal('${id}', 0)">❌ Against</button>
+                    <button onclick="voteProposal('${id}', 2)">⭕ Abstain</button>
+                </li>`;
+        }
+        document.getElementById('proposal-list').innerHTML = html;
+        log(`Loaded ${logs.length} proposals`);
+    } catch (e) {
+        document.getElementById('proposal-list').innerHTML = `<li>❌ Error: ${e.message}</li>`;
+        console.error("Proposals error:", e);
+    }
+}
+
+async function voteProposal(id, support) {
+    if (!gov) return alert("Connect wallet");
+    const supportText = support === 1 ? "For" : support === 0 ? "Against" : "Abstain";
+    try {
+        const tx = await gov.castVote(id, support);
+        await tx.wait();
+        alert(`✅ Voted ${supportText}: ${tx.hash}`);
+        log(`Voted ${supportText} on ${id}`);
+        refreshProposals();
+    } catch (e) {
+        alert(`❌ Vote failed: ${e.reason || e.message}`);
+    }
+}
+
+async function selfDelegate() {
+    if (!userAddress || !voft || !nstk) return alert("Connect wallet");
+    try {
+        document.getElementById('delegate-status').innerText = "⏳ Delegating both tokens...";
+        const [tx1, tx2] = await Promise.all([
+            voft.delegate(userAddress),
+            nstk.delegate(userAddress)
+        ]);
+        await Promise.all([tx1.wait(), tx2.wait()]);
+        document.getElementById('delegate-status').innerHTML = `<div class="success">✅ Delegated: ${tx1.hash.slice(0,20)}...</div>`;
+        log("Self-delegated both tokens");
+        setTimeout(refreshBalances, 2000);
+    } catch (e) {
+        document.getElementById('delegate-status').innerHTML = `<div class="error">❌ ${e.reason || e.message}</div>`;
+    }
+}
+
+async function delegateVotesOFT() {
+    try {
+        checkABIsLoaded();
+        const contract = new ethers.Contract(config.sepolia.voft, ABIS.oft, signer);
+        const tx = await contract.delegate(userAddress);
+        log(`Delegating VotesOFT: ${tx.hash}`);
+        await tx.wait();
+        log("VotesOFT delegated");
+        document.getElementById("delegate-status").innerHTML = `<div class="success">✅ VotesOFT delegated</div>`;
+    } catch (e) {
+        document.getElementById("delegate-status").innerHTML = `<div class="error">❌ ${e.message}</div>`;
+    }
+}
+
+async function delegateNSToken() {
+    try {
+        checkABIsLoaded();
+        const contract = new ethers.Contract(config.sepolia.ns, ABIS.erc20, signer);
+        const tx = await contract.delegate(userAddress);
+        log(`Delegating NSToken: ${tx.hash}`);
+        await tx.wait();
+        log("NSToken delegated");
+        document.getElementById("delegate-status").innerHTML = `<div class="success">✅ NSToken delegated</div>`;
+    } catch (e) {
+        document.getElementById("delegate-status").innerHTML = `<div class="error">❌ ${e.message}</div>`;
+    }
+}
+
+async function submitProposal() {
+    if (!gov || !userAddress) return alert("Connect wallet");
+    const target = document.getElementById('propose-target').value.trim();
+    const value = document.getElementById('propose-value').value || "0";
+    const calldata = document.getElementById('propose-calldata').value.trim() || "0x";
+    const desc = document.getElementById('propose-desc').value.trim();
+    
+    if (!ethers.utils.isAddress(target)) return alert("Invalid target address");
+    if (!desc) return alert("Description required");
+    
+    try {
+        document.getElementById('propose-status').innerText = "⏳ Proposing...";
+        const tx = await gov.propose([target], [value], [calldata], desc);
+        await tx.wait();
+        document.getElementById('propose-status').innerHTML = `<div class="success">✅ Proposal created: ${tx.hash}</div>`;
+        log(`Proposal created: ${tx.hash}`);
+        setTimeout(refreshProposals, 3000);
+    } catch (e) {
+        document.getElementById('propose-status').innerHTML = `<div class="error">❌ ${e.reason || e.message}</div>`;
+    }
+}
+
+async function estimateBridgeFee() {
+    try {
+        checkABIsLoaded();
+        // NOW FROM SEPOLIA
+        const oft = new ethers.Contract(config.sepolia.voft, ABIS.oft, provider);
+        const amount = ethers.utils.parseEther(document.getElementById("bridge-amount").value);
+        
+        const sendParam = {
+            dstEid: config.eids.amoy,  // NOW TO AMOY
+            to: ethers.utils.hexZeroPad(userAddress, 32),
+            amountLD: amount,
+            minAmountLD: amount.mul(99).div(100),
+            extraOptions: ethers.utils.solidityPack(["uint16","uint8","uint16","uint8","uint128"], [3,1,17,1,200000]),
+            composeMsg: "0x",
+            oftCmd: "0x"
+        };
+        
+        const fee = await oft.quoteSend(sendParam, false);
+        document.getElementById("bridge-result").textContent = `Fee: ${ethers.utils.formatEther(fee.nativeFee)} ETH`;
+        log(`Fee: ${ethers.utils.formatEther(fee.nativeFee)} ETH`);
+    } catch (e) {
+        document.getElementById("bridge-status").innerHTML = `<div class="error">❌ ${e.message}</div>`;
+        log(`Bridge fee error: ${e.message}`);
+    }
+}
+
+async function executeBridge() {
+    try {
+        checkABIsLoaded();
+        // NOW FROM SEPOLIA
+        const oft = new ethers.Contract(config.sepolia.voft, ABIS.oft, signer);
+        const amount = ethers.utils.parseEther(document.getElementById("bridge-amount").value);
+        
+        const sendParam = {
+            dstEid: config.eids.amoy,  // NOW TO AMOY
+            to: ethers.utils.hexZeroPad(userAddress, 32),
+            amountLD: amount,
+            minAmountLD: amount.mul(99).div(100),
+            extraOptions: ethers.utils.solidityPack(["uint16","uint8","uint16","uint8","uint128"], [3,1,17,1,200000]),
+            composeMsg: "0x",
+            oftCmd: "0x"
+        };
+        
+        const fee = await oft.quoteSend(sendParam, false);
+        document.getElementById("bridge-status").innerHTML = `<div class="info">⏳ Bridging...</div>`;
+        const tx = await oft.send(sendParam, fee, userAddress, { value: fee.nativeFee });
+        log(`Bridge: ${tx.hash}`);
+        await tx.wait();
+        document.getElementById("bridge-status").innerHTML = `<div class="success">✅ Complete</div>`;
+        document.getElementById("bridge-result").textContent = `TX: ${tx.hash}\nTrack: https://testnet.layerzeroscan.com/tx/${tx.hash}`;
+        log("Bridge confirmed");
+    } catch (e) {
+        document.getElementById("bridge-status").innerHTML = `<div class="error">❌ ${e.message}</div>`;
+        log(`Bridge error: ${e.message}`);
+    }
+}
+
+function logout() {
+    provider = null;
+    signer = null;
+    userAddress = null;
+    currentChainId = null;
+    gov = null;
+    voft = null;
+    nstk = null;
+
+    // Clear UI elements that show connection info
+    document.getElementById("connection-status").innerHTML = `<div class="warning">⚠️ Disconnected</div>`;
+    document.getElementById("connection-info").textContent = "";
+    document.getElementById("balance-info").textContent = "";
+    document.getElementById("balance-status").innerHTML = "";
+    document.getElementById("delegate-status").innerHTML = "";
+    document.getElementById("config-status").innerHTML = "";
+    document.getElementById("propose-status").innerHTML = "";
+    document.getElementById("propose-result").textContent = "";
+    document.getElementById("bridge-status").innerHTML = "";
+    document.getElementById("bridge-result").textContent = "";
+    document.getElementById('current-block').innerText = "-";
+    document.getElementById('quorum').innerText = "-";
+    document.getElementById('proposal-threshold').innerText = "-";
+    document.getElementById('proposal-list').innerHTML = '<li>Not connected</li>';
+
+    log("Disconnected wallet");
+}
+window.addEventListener('load', loadABIs);
+</script>
+</body>
+</html>

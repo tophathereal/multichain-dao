@@ -1,0 +1,21 @@
+{
+  "name": "bridge-relayer",
+  "version": "1.0.0",
+  "description": "Cross-chain token bridge relayer",
+  "main": "relayer.js",
+  "scripts": {
+    "start": "node relayer.js",
+    "dev": "nodemon relayer.js",
+    "test-connection": "node scripts/test-connection.js"
+	  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.0",
+    "express": "^5.1.0",
+    "path": "^0.12.7",
+    "winston": "^3.13.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}

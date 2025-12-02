@@ -1,0 +1,45 @@
+# Foundry
+out/
+cache/
+broadcast/
+lib/
+*.log
+
+# OpenTofu/Terraform
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/*.tfvars
+!terraform/*.tfvars.example
+
+# Environment
+.env
+.env.local
+*.key
+
+# Node
+node_modules/
+package-lock.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary
+*.tmp
+temp/
+
+# Compiler files
+cache/
+out/
+
+# Ignores development broadcast logs
+/broadcast
+
